@@ -90,7 +90,7 @@
 
 <script>
   // Funzione di verifica lato client (versione semplificata)
-  function verifyTokenInFrontend(userToken, staffToken) {
+  async function verifyTokenInFrontend(userToken, staffToken) {    
     // Recupera i parametri dall'URL
     const params = new URLSearchParams(window.location.search);
     const ticketId = params.get('ticket');
@@ -115,6 +115,20 @@
       console.error("Errore verifica token:", e);
       return false;
     }
+
+
+  // Carica i token dal backend (via API o file statico)
+  const response = await fetch('/ticketTokens.json');
+  const tokens = await response.json();
+  const ticketData = tokens[ticketId];
+
+  // Verifica staff token (da .env)
+  if (staffToken === "STAFF_TOKEN_SECRET") return true;
+
+  // Verifica token utente
+  return ticketData && 
+         userToken === ticketData.token && 
+         Date.now() < ticketData.expiresAt;
   }
 
   function verifyAccess() {
