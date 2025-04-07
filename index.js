@@ -456,16 +456,31 @@ async function generateTranscript(channel, openerId) {
 
 // Funzione per generare la trascrizione HTML di un ticket
 async function generateTranscript(channel) {
-
-    const tempToken = generateTempToken();
-    tempTokens.set(channel.id, { ...tempToken, ownerId: openerId });
-  
-    // Invia il token all'utente via DM
-    const opener = await client.users.fetch(openerId);
-    await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
     try {
-        // Raccogli tutti i messaggi del canale
-        const messages = await channel.messages.fetch({ limit: 300 }); // Puoi aumentare il limite se necessario
+        // 1. Estrai openerId dal nome del canale o dal topic
+        const openerId = channel.topic || channel.name.replace('ticket-', '').split('_')[0];
+        
+        if (!openerId) {
+            throw new Error('Impossibile identificare il creatore del ticket');
+        }
+
+        // 2. Genera token e salva
+        const token = uuidv4();
+        const tokensPath = path.join(ticketsDir, 'tokens.json');
+        
+        let tokens = {};
+        if (fs.existsSync(tokensPath)) {
+            tokens = JSON.parse(fs.readFileSync(tokensPath));
+        }
+        tokens[channel.id] = {
+            token,
+            expiresAt: Date.now() + 600000, // 10 minuti
+            ownerId: openerId
+        };
+        fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+
+        // 3. Recupera messaggi
+        const messages = await channel.messages.fetch({ limit: 100 }); // Puoi aumentare il limite se necessario
 
         // Creazione della struttura HTML
         let htmlContent = `
@@ -543,15 +558,21 @@ async function generateTranscript(channel) {
 `;
 
         // Salva il file HTML
-        const transcriptPath = path.join(ticketsDir, `${channel.name}_${channel.id}.html`);
+        const transcriptPath = path.join(ticketsDir, `ticket_${channel.id}.html`);
         fs.writeFileSync(transcriptPath, htmlContent);
 
-        // Aggiorna index.html
-        updateIndexHTML();
+        // 6. Invia token via DM
+        try {
+            const opener = await client.users.fetch(openerId);
+            await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${token}\`\nScade tra 10 minuti.`);
+        } catch (dmError) {
+            console.error(`Impossibile inviare DM a ${openerId}:`, dmError);
+        }
 
         return transcriptPath;
+
     } catch (error) {
-        console.error('Errore durante la generazione della trascrizione:', error);
+        console.error('Errore generazione transcript:', error);
         return null;
     }
 }
@@ -620,39 +641,31 @@ client.on('interactionCreate', async interaction => {
     
             if (interaction.customId === 'close_ticket') {
                 try {
-                    // 1. Ottieni openerId dal nome del canale o dal topic
                     const channel = interaction.channel;
-                    const openerId = channel.topic || channel.name.replace('ticket-', '').split('_')[0];
                     
-                    if (!openerId) {
-                        return interaction.reply({ 
-                            content: '❌ Impossibile identificare il creatore del ticket', 
-                            ephemeral: true 
-                        });
-                    }
-            
-                    // 2. Genera il transcript passando openerId
-                    const transcriptPath = await generateTranscript(channel, openerId);
-            
+                    // Genera transcript
+                    const transcriptPath = await generateTranscript(channel);
+                    
                     if (!transcriptPath) {
                         throw new Error('Generazione transcript fallita');
                     }
             
-                    // 3. Notifica l'utente
-                    try {
-                        const user = await client.users.fetch(openerId);
-                        await user.send(`📄 Il tuo ticket è stato chiuso. Transcript disponibile: ${transcriptPath}`);
-                    } catch (dmError) {
-                        console.error(`Impossibile notificare l'utente ${openerId}:`, dmError);
-                    }
-            
-                    // 4. Chiudi il ticket
-                    await interaction.reply({ content: '✅ Ticket chiuso con successo!', ephemeral: true });
-                    setTimeout(() => channel.delete().catch(console.error), 2000);
+                    // Notifica
+                    await interaction.reply({ 
+                        content: '✅ Ticket chiuso con successo!', 
+                        ephemeral: true 
+                    });
+                    
+                    // Elimina canale dopo breve ritardo
+                    setTimeout(() => {
+                        channel.delete().catch(err => {
+                            console.error('Errore eliminazione canale:', err);
+                        });
+                    }, 2000);
             
                 } catch (error) {
                     console.error('Errore chiusura ticket:', error);
-                    interaction.reply({ 
+                    await interaction.reply({ 
                         content: '❌ Errore durante la chiusura del ticket', 
                         ephemeral: true 
                     });
