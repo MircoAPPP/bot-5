@@ -364,6 +364,13 @@ fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
 
 // Funzione per generare la trascrizione HTML di un ticket
 async function generateTranscript(channel) {
+
+    const tempToken = generateTempToken();
+    tempTokens.set(channel.id, { ...tempToken, ownerId: openerId });
+  
+    // Invia il token all'utente via DM
+    const opener = await client.users.fetch(openerId);
+    await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
     try {
         // Raccogli tutti i messaggi del canale
         const messages = await channel.messages.fetch({ limit: 100 }); // Puoi aumentare il limite se necessario
@@ -531,6 +538,8 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (customId === 'close_ticket') {
+            const openerId = channel.topic; // Supponendo che l'ID dell'opener sia nel topic
+            const transcriptPath = await generateTranscript(channel, openerId);
             if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 return interaction.reply({ content: 'Non hai il permesso di chiudere i ticket.', flags: 'Ephemeral' });
             }
@@ -541,7 +550,6 @@ client.on('interactionCreate', async interaction => {
             }
 
             // Genera la trascrizione PRIMA di eliminare il canale
-            const transcriptPath = await generateTranscript(channel);
 
             // Elimina il canale del ticket DOPO aver generato la trascrizione
             await channel.delete();
@@ -1142,5 +1150,32 @@ client.on('messageCreate', async (message) => {
 ${progressBar} (${Math.round((userData.xp / xpNeeded) * 100)}%)
     `);
 });
+
+function generateTempToken() {
+    return {
+      token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
+      expiresAt: Date.now() + 600000 // Scade in 10 minuti
+    };
+  }
+  
+  // Token permanente per lo staff (salvato in .env)
+  const STAFF_TOKEN = process.env.STAFF_TOKEN || "staff-segreto-123";
+  
+  // Verifica i token
+  function verifyToken(userToken, staffToken, ticketOwnerId, userId) {
+    // Se è lo staff con token permanente
+    if (staffToken === STAFF_TOKEN) return true;
+    
+    // Se è il creatore del ticket con token temporaneo
+    if (userId === ticketOwnerId && userToken === currentTempToken?.token && Date.now() < currentTempToken.expiresAt) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  // Salva i token temporanei (in memoria per semplicità)
+  const tempTokens = new Map(); // Formato: { ticketId: { token, expiresAt, ownerId } }
+
 
 client.login(process.env.DISCORD_TOKEN); // Usa il token da .env
