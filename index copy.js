@@ -7,14 +7,6 @@ const warnDataPath = './warns.json';
 const path = require('path'); // Aggiungi questa riga
 const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
-const express = require("express");
-const crypto = require("crypto");
-const app = express();
-const bodyParser = require("body-parser");
-
-
-app.use(bodyParser.json());
-
 
 const client = new Client({
     intents: [
@@ -34,10 +26,6 @@ const WELCOME_ROLE_ID = "1331005128450375691"
 const TICKETS_DIR = path.join(__dirname, 'tickets');
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_REPO = process.env.GITHUB_REPO;
-const PORT = process.env.PORT || 3000;
-const TOKEN_FILE = "tokens.json";
-const PERMANENT_TOKEN = process.env.PERMANENT_TOKEN;
-
 
 client.once('ready', () => {
     console.log(`Bot avviato come ${client.user.tag}`);
@@ -1154,69 +1142,5 @@ client.on('messageCreate', async (message) => {
 ${progressBar} (${Math.round((userData.xp / xpNeeded) * 100)}%)
     `);
 });
-
-
-if (!fs.existsSync(TOKEN_FILE)) {
-    fs.writeFileSync(TOKEN_FILE, JSON.stringify({}, null, 2));
-}
-
-const generateToken = () => crypto.randomBytes(4).toString("hex");
-
-const saveToken = (userId, token) => {
-    const tokens = JSON.parse(fs.readFileSync(TOKEN_FILE));
-    tokens[userId] = { token, expiresAt: Date.now() + 10 * 60 * 1000 }; // Scade in 10 minuti
-    fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
-};
-
-const verifyToken = (userId, token) => {
-    const tokens = JSON.parse(fs.readFileSync(TOKEN_FILE));
-    if (tokens[userId] && tokens[userId].token === token) {
-        if (Date.now() > tokens[userId].expiresAt) {
-            delete tokens[userId];
-            fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
-            return false;
-        }
-        delete tokens[userId];
-        fs.writeFileSync(TOKEN_FILE, JSON.stringify(tokens, null, 2));
-        return true;
-    }
-    return token === PERMANENT_TOKEN;
-};
-
-app.post("/request-token", async (req, res) => {
-    const { userId } = req.body;
-    if (!userId) return res.status(400).json({ error: "User ID is required" });
-    
-    const user = await client.users.fetch(userId).catch(() => null);
-    if (!user) return res.status(404).json({ error: "User not found" });
-    
-    const token = generateToken();
-    saveToken(userId, token);
-    
-    user.send(`Ecco il tuo token temporaneo: ${token}. Scade tra 10 minuti.`)
-        .catch(() => console.error(`Impossibile inviare DM a ${userId}`));
-    
-    res.json({ success: true, message: "Token inviato via DM" });
-});
-
-app.post("/verify-token", (req, res) => {
-    const { userId, token } = req.body;
-    if (!userId || !token) return res.status(400).json({ success: false, message: "Dati mancanti" });
-
-    // Verifica token temporaneo
-    if (activeTokens[userId] && activeTokens[userId].token === token && Date.now() < activeTokens[userId].expires) {
-        delete activeTokens[userId]; // Rimuove il token dopo l'uso
-        return res.json({ success: true });
-    }
-
-    // Verifica token permanente
-    if (token === process.env.PERMANENT_TOKEN) {
-        return res.json({ success: true });
-    }
-
-    return res.status(401).json({ success: false, message: "Token non valido" });
-});
-
-app.listen(PORT, () => console.log(`Server in esecuzione sulla porta ${PORT}`));
 
 client.login(process.env.DISCORD_TOKEN); // Usa il token da .env
