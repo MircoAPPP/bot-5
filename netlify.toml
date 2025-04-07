@@ -1,0 +1,10 @@
+[build]
+  ignore = ".github/workflows"
+  publish = "tickets"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/private/*"
+  to = "/.netlify/functions/auth?path=:splat"
+  status = 200
+  force = true
