@@ -268,94 +268,186 @@ if (!fs.existsSync(ticketsDir)) {
 }
 
 // Funzione per aggiornare index.html
-async function generateTranscript(channel) {
-        try {
-            const messages = await channel.messages.fetch({ limit: 100 });
-            const token = uuidv4();
+async function generateTranscript(channel, openerId) {
+    try {
+        // 1. Genera token e salva
+        const token = uuidv4();
         const tokensPath = path.join(ticketsDir, 'tokens.json');
         
-        // Gestione token
         let tokens = {};
-        if(fs.existsSync(tokensPath)) {
+        if (fs.existsSync(tokensPath)) {
             tokens = JSON.parse(fs.readFileSync(tokensPath));
         }
         tokens[channel.id] = token;
         fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
 
-    let htmlContent = `
-<!DOCTYPE html>
+        // 2. Prepara i dati
+        const messages = await channel.messages.fetch({ limit: 300 });
+        const ticketInfo = {
+            id: channel.id,
+            name: channel.name,
+            createdAt: channel.createdAt,
+            closedAt: new Date(),
+            opener: openerId
+        };
+
+        // 3. Genera HTML COMPLETO
+        const htmlContent = `<!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trascrizione Ticket - ${channel.name}</title>
+    <title>Transcript Ticket #${ticketInfo.name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-primary: #36393f;
+            --bg-secondary: #2f3136;
+            --text-normal: #dcddde;
+            --text-muted: #72767d;
+            --brand: #5865f2;
+        }
         body {
-            background-color: #36393f;
-            color: #ffffff;
+            background-color: var(--bg-primary);
+            color: var(--text-normal);
             font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
             margin: 0;
             padding: 20px;
+            line-height: 1.5;
         }
-        h1 {
-            color: #ffffff;
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
-        ul {
-            list-style-type: none;
-            padding: 0;
+        .header {
+            border-bottom: 1px solid var(--text-muted);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
         }
-        li {
-            margin: 10px 0;
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
         }
-        a {
-            text-decoration: none;
-            color: #00b0f4;
+        .message:hover {
+            background: rgba(79, 84, 92, 0.4);
         }
-        a:hover {
-            text-decoration: underline;
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 15px;
+            object-fit: cover;
+        }
+        .message-content {
+            flex: 1;
+        }
+        .message-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 5px;
+        }
+        .username {
+            font-weight: 600;
+            color: white;
+            margin-right: 8px;
+        }
+        .timestamp {
+            font-size: 0.75em;
+            color: var(--text-muted);
+        }
+        .message-text {
+            word-break: break-word;
+        }
+        .attachments {
+            margin-top: 10px;
+        }
+        .attachment {
+            max-width: 300px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: var(--text-muted);
+            text-align: center;
         }
     </style>
-</head>
     <script>
-        (function() {
+        document.addEventListener('DOMContentLoaded', () => {
+            // Verifica token nell'URL
             const params = new URLSearchParams(window.location.search);
-            const ticketId = '${channel.id}';
+            const token = params.get('token');
             
-            if(!params.has('token')) {
-                window.location.href = '/404';
+            if (!token) {
+                document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token mancante</p></div>';
                 return;
             }
-
-            fetch('/.netlify/functions/verify-token?ticket=' + ticketId + '&token=' + params.get('token'))
+            
+            // Verifica con il backend
+            fetch('/api/verify-token?token=' + token)
                 .then(response => {
-                    if(!response.ok) window.location.href = '/401';
+                    if (!response.ok) {
+                        document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token non valido</p></div>';
+                    }
                 });
-        })();
+        });
     </script>
-
+</head>
 <body>
-    <h1>Elenco Ticket</h1>
-    <ul>
-`;
+    <div class="container">
+        <div class="header">
+            <h1>Transcript Ticket #${ticketInfo.name}</h1>
+            <p><strong>Creato da:</strong> ${ticketInfo.opener}</p>
+            <p><strong>Aperto il:</strong> ${ticketInfo.createdAt.toLocaleString()}</p>
+            <p><strong>Chiuso il:</strong> ${ticketInfo.closedAt.toLocaleString()}</p>
+        </div>
 
-    ticketFiles.forEach(file => {
-        const ticketName = file.replace('.html', '');
-        htmlContent += `
-        <li><a href="${file}">${ticketName}</a></li>
-`;
-    });
+        <div class="messages">
+            ${messages.reverse().map(msg => `
+            <div class="message">
+                <img class="avatar" src="${msg.author.displayAvatarURL({ extension: 'png', size: 128 })}" alt="${msg.author.username}">
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="username">${msg.author.username}</span>
+                        <span class="timestamp">${msg.createdAt.toLocaleString()}</span>
+                    </div>
+                    <div class="message-text">${msg.content}</div>
+                    ${msg.attachments.size > 0 ? `
+                    <div class="attachments">
+                        ${Array.from(msg.attachments.values()).map(att => 
+                            `<img src="${att.url}" class="attachment" alt="Allegato">`
+                        ).join('')}
+                    </div>` : ''}
+                </div>
+            </div>
+            `).join('')}
+        </div>
 
-    htmlContent += `
-    </ul>
+        <div class="footer">
+            <p>Transcript generato automaticamente • ${new Date().toLocaleString()}</p>
+        </div>
+    </div>
 </body>
-</html>
-`;
+</html>`;
 
-fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
-} catch (error) {
-    console.error('Errore durante la generazione della trascrizione:', error);
-    return null;
-}
+        // 4. Salva il file
+        const transcriptPath = path.join(ticketsDir, `ticket_${channel.id}.html`);
+        fs.writeFileSync(transcriptPath, htmlContent);
+
+        return transcriptPath;
+
+    } catch (error) {
+        console.error('Errore generazione transcript:', error);
+        return null;
+    }
 }
 
 
@@ -373,7 +465,7 @@ async function generateTranscript(channel) {
     await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
     try {
         // Raccogli tutti i messaggi del canale
-        const messages = await channel.messages.fetch({ limit: 100 }); // Puoi aumentare il limite se necessario
+        const messages = await channel.messages.fetch({ limit: 300 }); // Puoi aumentare il limite se necessario
 
         // Creazione della struttura HTML
         let htmlContent = `
