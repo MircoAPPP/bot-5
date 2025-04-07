@@ -559,103 +559,107 @@ async function generateTranscript(channel) {
 // Gestione degli eventi dei bottoni
 client.on('interactionCreate', async interaction => {
     try {
-        if (!interaction.isButton()) return;
-
-        const { customId, guild, member, channel } = interaction;
-
-        if (customId === 'apri_ticket') {
-            // Verifica se l'utente ha già un ticket aperto
-            const existingTicket = guild.channels.cache.find(ch => ch.name === `ticket-${member.user.id}`);
-            if (existingTicket) {
-                return interaction.reply({ content: 'Hai già un ticket aperto!', flags: 'Ephemeral' });
+            if (!interaction.isButton()) return;
+    
+            const { customId, guild, member, channel } = interaction;
+    
+            if (customId === 'apri_ticket') {
+                // Verifica se l'utente ha già un ticket aperto
+                const existingTicket = guild.channels.cache.find(ch => ch.name === `ticket-${member.user.id}`);
+                if (existingTicket) {
+                    return interaction.reply({ content: 'Hai già un ticket aperto!', flags: 'Ephemeral' });
+                }
+    
+                // Creazione del canale ticket
+                const ticketChannel = await guild.channels.create({
+                    name: `ticket-${member.user.id}`, // Nome del canale
+                    type: ChannelType.GuildText, // Tipo di canale (testo)
+                    permissionOverwrites: [
+                        {
+                            id: guild.id, // Imposta i permessi per il server
+                            deny: [PermissionsBitField.Flags.ViewChannel], // Nega la vista a tutti
+                        },
+                        {
+                            id: member.user.id, // Imposta i permessi per l'utente
+                            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages], // Permetti la vista e l'invio di messaggi
+                        },
+                    ],
+                });
+    
+                // Embed per il ticket creato
+                const ticketEmbed = new EmbedBuilder()
+                    .setColor('#00ff00')
+                    .setTitle('Ticket Aperto')
+                    .setDescription(`Ciao ${member.user.username}, il tuo ticket è stato aperto!`)
+                    .addFields(
+                        { name: 'Utente', value: `${member.user}`, inline: true },
+                        { name: 'ID Ticket', value: `${ticketChannel.id}`, inline: true }
+                    )
+                    .setFooter({ text: 'Il nostro team ti risponderà al più presto!' })
+                    .setTimestamp();
+    
+                // Pulsanti per il ticket (Claim e Close)
+                const ticketButtons = new ActionRowBuilder()
+                    .addComponents(
+                        new ButtonBuilder()
+                            .setCustomId('claim_ticket')
+                            .setLabel('Claim')
+                            .setStyle(ButtonStyle.Primary),
+                        new ButtonBuilder()
+                            .setCustomId('close_ticket')
+                            .setLabel('Close')
+                            .setStyle(ButtonStyle.Danger)
+                    );
+    
+                // Invio dell'embed e dei pulsanti nel canale del ticket
+                ticketChannel.send({ embeds: [ticketEmbed], components: [ticketButtons] });
+    
+                // Risposta all'utente
+                interaction.reply({ content: `Il tuo ticket è stato creato: ${ticketChannel}`, flags: 'Ephemeral' });
             }
-
-            // Creazione del canale ticket
-            const ticketChannel = await guild.channels.create({
-                name: `ticket-${member.user.id}`, // Nome del canale
-                type: ChannelType.GuildText, // Tipo di canale (testo)
-                permissionOverwrites: [
-                    {
-                        id: guild.id, // Imposta i permessi per il server
-                        deny: [PermissionsBitField.Flags.ViewChannel], // Nega la vista a tutti
-                    },
-                    {
-                        id: member.user.id, // Imposta i permessi per l'utente
-                        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages], // Permetti la vista e l'invio di messaggi
-                    },
-                ],
-            });
-
-            // Embed per il ticket creato
-            const ticketEmbed = new EmbedBuilder()
-                .setColor('#00ff00')
-                .setTitle('Ticket Aperto')
-                .setDescription(`Ciao ${member.user.username}, il tuo ticket è stato aperto!`)
-                .addFields(
-                    { name: 'Utente', value: `${member.user}`, inline: true },
-                    { name: 'ID Ticket', value: `${ticketChannel.id}`, inline: true }
-                )
-                .setFooter({ text: 'Il nostro team ti risponderà al più presto!' })
-                .setTimestamp();
-
-            // Pulsanti per il ticket (Claim e Close)
-            const ticketButtons = new ActionRowBuilder()
-                .addComponents(
-                    new ButtonBuilder()
-                        .setCustomId('claim_ticket')
-                        .setLabel('Claim')
-                        .setStyle(ButtonStyle.Primary),
-                    new ButtonBuilder()
-                        .setCustomId('close_ticket')
-                        .setLabel('Close')
-                        .setStyle(ButtonStyle.Danger)
-                );
-
-            // Invio dell'embed e dei pulsanti nel canale del ticket
-            ticketChannel.send({ embeds: [ticketEmbed], components: [ticketButtons] });
-
-            // Risposta all'utente
-            interaction.reply({ content: `Il tuo ticket è stato creato: ${ticketChannel}`, flags: 'Ephemeral' });
-        }
-
-        if (customId === 'claim_ticket') {
-            if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-                return interaction.reply({ content: 'Non hai il permesso di gestire i ticket.', flags: 'Ephemeral' });
+    
+            if (interaction.customId === 'close_ticket') {
+                try {
+                    // 1. Ottieni openerId dal nome del canale o dal topic
+                    const channel = interaction.channel;
+                    const openerId = channel.topic || channel.name.replace('ticket-', '').split('_')[0];
+                    
+                    if (!openerId) {
+                        return interaction.reply({ 
+                            content: '❌ Impossibile identificare il creatore del ticket', 
+                            ephemeral: true 
+                        });
+                    }
+            
+                    // 2. Genera il transcript passando openerId
+                    const transcriptPath = await generateTranscript(channel, openerId);
+            
+                    if (!transcriptPath) {
+                        throw new Error('Generazione transcript fallita');
+                    }
+            
+                    // 3. Notifica l'utente
+                    try {
+                        const user = await client.users.fetch(openerId);
+                        await user.send(`📄 Il tuo ticket è stato chiuso. Transcript disponibile: ${transcriptPath}`);
+                    } catch (dmError) {
+                        console.error(`Impossibile notificare l'utente ${openerId}:`, dmError);
+                    }
+            
+                    // 4. Chiudi il ticket
+                    await interaction.reply({ content: '✅ Ticket chiuso con successo!', ephemeral: true });
+                    setTimeout(() => channel.delete().catch(console.error), 2000);
+            
+                } catch (error) {
+                    console.error('Errore chiusura ticket:', error);
+                    interaction.reply({ 
+                        content: '❌ Errore durante la chiusura del ticket', 
+                        ephemeral: true 
+                    });
+                }
             }
-
-            await channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true });
-
-            // Invia un messaggio pubblico nel canale del ticket
-            channel.send(`Il ticket è stato reclamato da ${member.user.username}.`);
-        }
-
-        if (customId === 'close_ticket') {
-            const openerId = channel.topic; // Supponendo che l'ID dell'opener sia nel topic
-            const transcriptPath = await generateTranscript(channel, openerId);
-            if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-                return interaction.reply({ content: 'Non hai il permesso di chiudere i ticket.', flags: 'Ephemeral' });
-            }
-
-            // Verifica che il canale esista
-            if (!channel || channel.deleted) {
-                return interaction.reply({ content: 'Il canale del ticket non esiste più.', flags: 'Ephemeral' });
-            }
-
-            // Genera la trascrizione PRIMA di eliminare il canale
-
-            // Elimina il canale del ticket DOPO aver generato la trascrizione
-            await channel.delete();
-
-            // Notifica l'utente
-            try {
-                await member.send('Il tuo ticket è stato chiuso. Grazie per aver contattato il supporto!');
-            } catch (error) {
-                console.error('Impossibile inviare un messaggio privato all\'utente:', error);
-            }
-        }
-    } catch (error) {
-        console.error('Errore durante la gestione dell\'interazione:', error);
-        interaction.reply({ content: 'Si è verificato un errore durante l\'esecuzione del comando.', flags: 'Ephemeral' });
+    }catch(error){
+    console.error("Errore generico",error);
     }
 });
 
