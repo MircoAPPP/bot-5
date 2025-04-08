@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
@@ -5,185 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elenco Ticket</title>
     <style>
-        body {
-            background-color: #36393f;
-            color: #ffffff;
-            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-        }
-        h1 {
-            color: #ffffff;
-        }
-        ul {
-            list-style-type: none;
-            padding: 0;
-        }
-        li {
-            margin: 10px 0;
-        }
-        a {
-            text-decoration: none;
-            color: #00b0f4;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        #login-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.8);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .login-box {
-            background: #2f3136;
-            padding: 25px;
-            border-radius: 8px;
-            width: 320px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .login-box h3 {
-            margin-top: 0;
-            color: #fff;
-            text-align: center;
-        }
-        .login-box input {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border-radius: 4px;
-            border: 1px solid #202225;
-            background-color: #40444b;
-            color: #fff;
-        }
-        .login-box button {
-            width: 100%;
-            padding: 10px;
-            background-color: #5865f2;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: bold;
-            margin-top: 10px;
-        }
-        .login-box button:hover {
-            background-color: #4752c4;
-        }
-        #error-message {
-            color: #f04747;
-            text-align: center;
-            margin-top: 10px;
-            display: none;
-        }
-        #content {
-            display: none;
-        }
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        ul { list-style-type: none; padding: 0; }
+        li { margin: 10px 0; }
+        a { color: #0066cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div id="login-modal">
-        <div class="login-box">
-            <h3>🔐 Accesso al Ticket</h3>
-            <input type="text" id="user-token" placeholder="Il tuo token temporaneo" autocomplete="off">
-            <input type="password" id="staff-token" placeholder="Token staff (opzionale)" autocomplete="off">
-            <button id="login-button">Accedi</button>
-            <p id="error-message">Token non valido!</p>
-        </div>
-    </div>
+    <h1>Elenco Ticket</h1>
+    <ul>
+        <li><a href="ticket-722524694150119427_1359232353997819934.html">ticket-722524694150119427_1359232353997819934</a></li>
+        <li><a href="ticket_1359227798627160154.html">ticket_1359227798627160154</a></li>
+        <li><a href="ticket_1359229952398196768.html">ticket_1359229952398196768</a></li>
 
-    <div id="content">
-        <h1>Elenco Ticket</h1>
-        <ul>
-
-        </ul>
-    </div>
-
-    <script>
-        // Configurazione
-        const STAFF_TOKEN = "staff-segreto-123"; // Sostituisci con il tuo token reale
-        
-        // Elementi DOM
-        const loginModal = document.getElementById('login-modal');
-        const content = document.getElementById('content');
-        const loginButton = document.getElementById('login-button');
-        const userTokenInput = document.getElementById('user-token');
-        const staffTokenInput = document.getElementById('staff-token');
-        const errorMessage = document.getElementById('error-message');
-
-        // Verifica l'accesso
-        async function verifyAccess() {
-            const userToken = userTokenInput.value.trim();
-            const staffToken = staffTokenInput.value.trim();
-            
-            try {
-                // Verifica se è un accesso staff
-                if (staffToken === STAFF_TOKEN) {
-                    grantAccess();
-                    return;
-                }
-                
-                // Verifica token utente
-                const params = new URLSearchParams(window.location.search);
-                const ticketId = params.get('ticket');
-                
-                if (!ticketId) {
-                    showError("Nessun ticket specificato");
-                    return;
-                }
-                
-                // Carica i token dal backend
-                const response = await fetch(`/api/verify-token?ticket=${ticketId}&userToken=${userToken}`);
-                const result = await response.json();
-                
-                if (result.valid) {
-                    grantAccess();
-                } else {
-                    showError("Token non valido o scaduto");
-                }
-            } catch (error) {
-                console.error("Errore verifica token:", error);
-                showError("Errore durante la verifica");
-            }
-        }
-        
-        function grantAccess() {
-            loginModal.style.display = 'none';
-            content.style.display = 'block';
-            errorMessage.style.display = 'none';
-        }
-        
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorMessage.style.display = 'block';
-        }
-        
-        // Event listeners
-        loginButton.addEventListener('click', verifyAccess);
-        
-        // Invio con Enter
-        userTokenInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') verifyAccess();
-        });
-        
-        staffTokenInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') verifyAccess();
-        });
-        
-        // Verifica se c'è già un token valido nell'URL (per deep linking)
-        window.addEventListener('DOMContentLoaded', () => {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has('token')) {
-                userTokenInput.value = params.get('token');
-                verifyAccess();
-            }
-        });
-    </script>
+    </ul>
 </body>
 </html>
