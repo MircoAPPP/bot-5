@@ -1,58 +1,125 @@
 <!DOCTYPE html>
-<html>
+<html lang="it">
 <head>
-  <title>Archivio Ticket</title>
-  <style>
-    .staff-only { display: none; }
-    .staff-mode .staff-only { display: block; }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accesso Ticket</title>
+    <style>
+        /* Stili esistenti... */
+        .auth-type { margin: 20px 0; }
+        .auth-option { 
+            padding: 10px;
+            margin: 5px;
+            cursor: pointer;
+            background: #2f3136;
+            border-radius: 4px;
+        }
+        .auth-option:hover { background: #40444b; }
+        .hidden { display: none; }
+    </style>
 </head>
 <body>
-  <div id="auth-container">
-    <h2>Seleziona Tipo di Accesso</h2>
-    <button onclick="showUserAuth()">Utente Normale</button>
-    <button onclick="showStaffAuth()">Membro Staff</button>
-  </div>
+    <div id="auth-container">
+        <h2>Seleziona Tipo di Accesso</h2>
+        
+        <div class="auth-type">
+            <div class="auth-option" onclick="showAuthForm('user')">
+                👤 Utente Normale
+            </div>
+            <div class="auth-option" onclick="showAuthForm('staff')">
+                👮 Membro Staff
+            </div>
+        </div>
 
-  <div id="user-auth" style="display:none;">
-    <input type="text" id="user-token" placeholder="Token Ricevuto via DM">
-    <button onclick="verifyUserToken()">Accedi</button>
-  </div>
+        <div id="user-auth" class="hidden">
+            <input type="text" id="user-token" placeholder="Token Ricevuto via DM">
+            <button onclick="verifyToken('user')">Accedi</button>
+        </div>
 
-  <div id="staff-auth" style="display:none;">
-    <input type="password" id="staff-token" placeholder="Token Staff Segreto">
-    <button onclick="verifyStaffToken()">Verifica</button>
-  </div>
+        <div id="staff-auth" class="hidden">
+            <input type="password" id="staff-token" placeholder="Token Staff Segreto">
+            <button onclick="verifyToken('staff')">Verifica</button>
+        </div>
 
-  <div id="content" style="display:none;">
-    <!-- Contenuto caricato dinamicamente -->
-  </div>
+        <div id="error-message" style="color: #f04747; display: none;"></div>
+    </div>
 
-  <script>
-    // Funzioni di verifica identiche a quelle nel template del ticket
-    function verifyUserToken() {
-      const token = document.getElementById('user-token').value;
-      fetch('/verify-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ticketId: window.location.pathname.split('/').pop(),
-          token 
-        })
-      }).then(/* ... */);
-    }
+    <div id="content" class="hidden">
+        <!-- Contenuto protetto verrà caricato qui -->
+    </div>
 
-    function verifyStaffToken() {
-      const token = document.getElementById('staff-token').value;
-      fetch('/verify-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          isStaff: true,
-          token 
-        })
-      }).then(/* ... */);
-    }
-  </script>
+    <script>
+        // Funzioni per mostrare i form di autenticazione
+        function showAuthForm(type) {
+            // Nascondi tutti i form
+            document.getElementById('user-auth').classList.add('hidden');
+            document.getElementById('staff-auth').classList.add('hidden');
+            
+            // Mostra il form selezionato
+            if (type === 'user') {
+                document.getElementById('user-auth').classList.remove('hidden');
+            } else if (type === 'staff') {
+                document.getElementById('staff-auth').classList.remove('hidden');
+            }
+        }
+
+        // Funzione di verifica unificata
+        function verifyToken(type) {
+            const tokenInput = type === 'user' ? 'user-token' : 'staff-token';
+            const token = document.getElementById(tokenInput).value.trim();
+            
+            if (!token) {
+                showError('Inserisci un token valido');
+                return;
+            }
+
+            // Simulazione verifica (sostituisci con chiamata API reale)
+            let isValid = false;
+            let isStaff = false;
+
+            if (type === 'staff') {
+                // Verifica token staff (esempio)
+                isValid = token === 'STAFF_SECRET_TOKEN'; // Sostituisci con la tua logica
+                isStaff = true;
+            } else {
+                // Verifica token utente (esempio)
+                isValid = token.length === 32; // Sostituisci con la tua logica
+            }
+
+            if (isValid) {
+                // Accesso consentito
+                document.getElementById('auth-container').classList.add('hidden');
+                document.getElementById('content').classList.remove('hidden');
+                
+                if (isStaff) {
+                    document.getElementById('content').innerHTML = `
+                        <h1>Modalità Staff</h1>
+                        <p>Accesso completo a tutti i ticket</p>
+                    `;
+                } else {
+                    document.getElementById('content').innerHTML = `
+                        <h1>Il Tuo Ticket</h1>
+                        <p>Contenuto del ticket...</p>
+                    `;
+                }
+            } else {
+                showError('Token non valido');
+            }
+        }
+
+        function showError(message) {
+            const errorElement = document.getElementById('error-message');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 3000);
+        }
+
+        // Inizializzazione: mostra la selezione del tipo di accesso
+        document.addEventListener('DOMContentLoaded', () => {
+            showAuthForm('none'); // Nascondi tutti i form inizialmente
+        });
+    </script>
 </body>
 </html>
