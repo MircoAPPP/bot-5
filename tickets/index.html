@@ -1,1 +1,58 @@
-<!DOCTYPE html><html><head><title>Ticket Archiviati</title></head><body><h1>Ticket Archiviati</h1><ul><li><a href="ticket-722524694150119427_1359236991337627878.html">ticket-722524694150119427_1359236991337627878</a></li><li><a href="ticket-722524694150119427_1359238322693607696.html">ticket-722524694150119427_1359238322693607696</a></li><li><a href="ticket-722524694150119427_1359238924920160306.html">ticket-722524694150119427_1359238924920160306</a></li><li><a href="ticket-941322473205538826_1359239001684574310.html">ticket-941322473205538826_1359239001684574310</a></li></ul></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Archivio Ticket</title>
+  <style>
+    .staff-only { display: none; }
+    .staff-mode .staff-only { display: block; }
+  </style>
+</head>
+<body>
+  <div id="auth-container">
+    <h2>Seleziona Tipo di Accesso</h2>
+    <button onclick="showUserAuth()">Utente Normale</button>
+    <button onclick="showStaffAuth()">Membro Staff</button>
+  </div>
+
+  <div id="user-auth" style="display:none;">
+    <input type="text" id="user-token" placeholder="Token Ricevuto via DM">
+    <button onclick="verifyUserToken()">Accedi</button>
+  </div>
+
+  <div id="staff-auth" style="display:none;">
+    <input type="password" id="staff-token" placeholder="Token Staff Segreto">
+    <button onclick="verifyStaffToken()">Verifica</button>
+  </div>
+
+  <div id="content" style="display:none;">
+    <!-- Contenuto caricato dinamicamente -->
+  </div>
+
+  <script>
+    // Funzioni di verifica identiche a quelle nel template del ticket
+    function verifyUserToken() {
+      const token = document.getElementById('user-token').value;
+      fetch('/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          ticketId: window.location.pathname.split('/').pop(),
+          token 
+        })
+      }).then(/* ... */);
+    }
+
+    function verifyStaffToken() {
+      const token = document.getElementById('staff-token').value;
+      fetch('/verify-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          isStaff: true,
+          token 
+        })
+      }).then(/* ... */);
+    }
+  </script>
+</body>
+</html>
