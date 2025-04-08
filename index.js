@@ -989,25 +989,51 @@ function runGitCommand(command) {
     });
 }
 
-// Funzione per pushare i file al repository GitHub
+function runGitCommand(command, cwd = __dirname) {
+    return new Promise((resolve, reject) => {
+        exec(command, { cwd }, (error, stdout, stderr) => {
+            if (error) {
+                console.error(`Errore durante l'esecuzione del comando: ${command}`);
+                console.error(stderr);
+                reject(error);
+            } else {
+                console.log(stdout);
+                resolve(stdout);
+            }
+        });
+    });
+}
+
 async function pushToGitHub() {
     try {
+        // Prima verifichiamo il branch corrente
+        const currentBranch = await runGitCommand('git branch --show-current');
+        const branchName = currentBranch.trim() || 'master'; // Default a 'master' se non rilevato
+        
+        console.log(`Eseguendo push sul branch: ${branchName}`);
+
         // Configura Git
         await runGitCommand('git config --global user.name "Bot"');
         await runGitCommand('git config --global user.email "bot@example.com"');
 
         // Aggiungi tutti i file nella cartella tickets
-        await runGitCommand(`git add ${TICKETS_DIR}`);
+        await runGitCommand('git add tickets');
 
         // Fai commit delle modifiche
         await runGitCommand('git commit -m "Aggiunti nuovi ticket automaticamente"');
 
         // Push al repository GitHub
-        await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git main`);
+        await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git ${branchName}`);
 
         console.log('Push completato con successo!');
     } catch (error) {
         console.error('Errore durante il push al repository GitHub:', error);
+        
+        // Prova con 'master' se 'main' fallisce
+        if (error.message.includes('main does not match any')) {
+            console.log('Tentativo con branch master...');
+            await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git master`);
+        }
     }
 }
 
