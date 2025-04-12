@@ -267,6 +267,20 @@ if (!fs.existsSync(ticketsDir)) {
     fs.mkdirSync(ticketsDir);
 }
 
+function updateIndexHTML() {
+    const ticketFiles = fs.readdirSync(ticketsDir)
+        .filter(file => file.endsWith('.html') && file !== 'index.html');
+
+    let htmlContent = `<!DOCTYPE html><html><head><title>Ticket Archiviati</title></head><body><h1>Ticket Archiviati</h1><ul>`;
+    
+    ticketFiles.forEach(file => {
+        htmlContent += `<li><a href="${file}">${file.replace('.html', '')}</a></li>`;
+    });
+
+    htmlContent += `</ul></body></html>`;
+    fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
+}
+
 // Funzione per aggiornare index.html
 async function generateTranscript(channel) {
         try {
@@ -359,23 +373,40 @@ fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
 }
 
 
-
-
-
 // Funzione per generare la trascrizione HTML di un ticket
-async function generateTranscript(channel) {
-
-    const tempToken = generateTempToken();
-    tempTokens.set(channel.id, { ...tempToken, ownerId: openerId });
-  
-    // Invia il token all'utente via DM
-    const opener = await client.users.fetch(openerId);
-    await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
+async function generateTranscript(channel, openerId) {
     try {
-        // Raccogli tutti i messaggi del canale
-        const messages = await channel.messages.fetch({ limit: 300 }); // Puoi aumentare il limite se necessario
+        // 1. Genera e salva il token temporaneo
+        const tempToken = {
+            token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
+            expiresAt: Date.now() + 600000 // Scade in 10 minuti
+        };
+        
+        // Salva il token (in memoria o su file)
+        const tokensPath = path.join(ticketsDir, 'tokens.json');
+        let tokens = {};
+        if (fs.existsSync(tokensPath)) {
+            tokens = JSON.parse(fs.readFileSync(tokensPath));
+        }
+        tokens[channel.id] = {
+            token: tempToken.token,
+            expiresAt: tempToken.expiresAt,
+            ownerId: openerId
+        };
+        fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
 
-        // Creazione della struttura HTML
+        // 2. Invia il token all'utente via DM
+        try {
+            const opener = await client.users.fetch(openerId);
+            await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
+        } catch (dmError) {
+            console.error('Impossibile inviare il token via DM:', dmError);
+        }
+
+        // 3. Raccogli i messaggi del canale
+        const messages = await channel.messages.fetch({ limit: 100 });
+        
+        // 4. Crea la struttura HTML
         let htmlContent = `
 <!DOCTYPE html>
 <html lang="it">
@@ -384,53 +415,39 @@ async function generateTranscript(channel) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trascrizione Ticket - ${channel.name}</title>
     <style>
-        body {
-            background-color: #36393f;
-            color: #ffffff;
-            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-        }
-        .message {
-            display: flex;
-            margin-bottom: 15px;
-        }
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            margin-right: 15px;
-        }
-        .message-content {
-            flex: 1;
-        }
-        .username {
-            font-weight: bold;
-            color: #ffffff;
-            margin-right: 8px;
-        }
-        .timestamp {
-            font-size: 0.8em;
-            color: #72767d;
-        }
-        .content {
-            margin-top: 5px;
-            color: #dcddde;
-        }
+        body { background-color: #36393f; color: #fff; font-family: 'Whitney', sans-serif; margin: 0; padding: 20px; }
+        .message { display: flex; margin-bottom: 15px; }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }
+        .message-content { flex: 1; }
+        .username { font-weight: bold; color: #fff; margin-right: 8px; }
+        .timestamp { font-size: 0.8em; color: #72767d; }
+        .content { margin-top: 5px; color: #dcddde; }
+        .attachments img { max-width: 300px; max-height: 300px; border-radius: 4px; }
     </style>
 </head>
 <body>
     <h1>Trascrizione Ticket - ${channel.name}</h1>
     <p><strong>ID Ticket:</strong> ${channel.id}</p>
     <p><strong>Creato da:</strong> ${channel.topic || 'N/A'}</p>
-    <p><strong>Data di creazione:</strong> ${new Date(channel.createdAt).toLocaleString()}</p>
-    <p><strong>Data di chiusura:</strong> ${new Date().toLocaleString()}</p>
+    <p><strong>Data creazione:</strong> ${new Date(channel.createdAt).toLocaleString()}</p>
+    <p><strong>Data chiusura:</strong> ${new Date().toLocaleString()}</p>
     <hr>
-    <h2>Messaggi</h2>
+    <h2>Messaggi (${messages.size})</h2>
 `;
 
-        // Aggiungi ogni messaggio all'HTML
+        // 5. Aggiungi i messaggi all'HTML
         messages.reverse().forEach(msg => {
+            let attachmentsContent = '';
+            if (msg.attachments.size > 0) {
+                attachmentsContent = `<div class="attachments">` +
+                    Array.from(msg.attachments.values())
+                        .map(att => att.contentType?.startsWith('image/') 
+                            ? `<img src="${att.url}" alt="Allegato">` 
+                            : `<a href="${att.url}">${att.name}</a>`)
+                        .join('<br>') +
+                    `</div>`;
+            }
+
             htmlContent += `
     <div class="message">
         <img class="avatar" src="${msg.author.displayAvatarURL()}" alt="${msg.author.username}">
@@ -440,21 +457,19 @@ async function generateTranscript(channel) {
                 <span class="timestamp">${new Date(msg.createdAt).toLocaleString()}</span>
             </div>
             <div class="content">${msg.content}</div>
+            ${attachmentsContent}
         </div>
     </div>
 `;
         });
 
-        htmlContent += `
-</body>
-</html>
-`;
+        htmlContent += `</body></html>`;
 
-        // Salva il file HTML
+        // 6. Salva il file HTML
         const transcriptPath = path.join(ticketsDir, `${channel.name}_${channel.id}.html`);
         fs.writeFileSync(transcriptPath, htmlContent);
 
-        // Aggiorna index.html
+        // 7. Aggiorna l'indice dei ticket
         updateIndexHTML();
 
         return transcriptPath;
@@ -538,10 +553,17 @@ client.on('interactionCreate', async interaction => {
         }
 
         if (customId === 'close_ticket') {
-            const openerId = channel.topic; // Supponendo che l'ID dell'opener sia nel topic
+            const openerId = channel.name.replace('ticket-', '');      
             const transcriptPath = await generateTranscript(channel, openerId);
             if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
                 return interaction.reply({ content: 'Non hai il permesso di chiudere i ticket.', flags: 'Ephemeral' });
+            }
+
+            if (!openerId || !/^\d+$/.test(openerId)) {
+                return interaction.reply({ 
+                    content: 'Errore: impossibile identificare il creatore del ticket', 
+                    ephemeral: true 
+                });
             }
 
             // Verifica che il canale esista
@@ -883,20 +905,9 @@ function runGitCommand(command) {
 // Funzione per pushare i file al repository GitHub
 async function pushToGitHub() {
     try {
-        // Configura Git
-        await runGitCommand('git config --global user.name "Bot"');
-        await runGitCommand('git config --global user.email "bot@example.com"');
-
-        // Aggiungi tutti i file nella cartella tickets
-        await runGitCommand(`git add ${TICKETS_DIR}`);
-
-        // Fai commit delle modifiche
-        await runGitCommand('git commit -m "Aggiunti nuovi ticket automaticamente"');
-
-        // Push al repository GitHub
-        await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git main`);
-
-        console.log('Push completato con successo!');
+        await runGitCommand(`cd "${TICKETS_DIR}" && git add .`);
+        await runGitCommand(`cd "${TICKETS_DIR}" && git commit -m "Aggiunti nuovi ticket automaticamente"`);
+        await runGitCommand(`cd "${TICKETS_DIR}" && git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git master`);
     } catch (error) {
         console.error('Errore durante il push al repository GitHub:', error);
     }

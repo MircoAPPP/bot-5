@@ -7,6 +7,22 @@ const warnDataPath = './warns.json';
 const path = require('path'); // Aggiungi questa riga
 const { exec } = require('child_process');
 const { v4: uuidv4 } = require('uuid');
+const express = require('express');
+const app = express();
+app.use(express.json());
+const crypto = require('crypto');
+
+app.post('/verify-token', (req, res) => {
+    const { ticketId, token, isStaff } = req.body;
+    const verification = verifyToken(ticketId, token, isStaff);
+    
+    res.json({
+      valid: verification.valid,
+      isStaff: verification.isStaff
+    });
+  });
+  
+  app.listen(3000, () => console.log('Auth server running on port 3000'));
 
 const client = new Client({
     intents: [
@@ -267,229 +283,37 @@ if (!fs.existsSync(ticketsDir)) {
     fs.mkdirSync(ticketsDir);
 }
 
+function updateIndexHTML() {
+    const ticketFiles = fs.readdirSync(ticketsDir)
+        .filter(file => file.endsWith('.html') && file !== 'index.html');
+
+    let htmlContent = `<!DOCTYPE html><html><head><title>Ticket Archiviati</title></head><body><h1>Ticket Archiviati</h1><ul>`;
+    
+    ticketFiles.forEach(file => {
+        htmlContent += `<li><a href="${file}">${file.replace('.html', '')}</a></li>`;
+    });
+
+    htmlContent += `</ul></body></html>`;
+    fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
+}
+
 // Funzione per aggiornare index.html
-async function generateTranscript(channel, openerId) {
-    try {
-        // 1. Genera token e salva
-        const token = uuidv4();
+async function generateTranscript(channel) {
+        try {
+            const messages = await channel.messages.fetch({ limit: 100 });
+            const token = uuidv4();
         const tokensPath = path.join(ticketsDir, 'tokens.json');
         
+        // Gestione token
         let tokens = {};
-        if (fs.existsSync(tokensPath)) {
+        if(fs.existsSync(tokensPath)) {
             tokens = JSON.parse(fs.readFileSync(tokensPath));
         }
         tokens[channel.id] = token;
         fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
 
-        // 2. Prepara i dati
-        const messages = await channel.messages.fetch({ limit: 300 });
-        const ticketInfo = {
-            id: channel.id,
-            name: channel.name,
-            createdAt: channel.createdAt,
-            closedAt: new Date(),
-            opener: openerId
-        };
-
-        // 3. Genera HTML COMPLETO
-        const htmlContent = `<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transcript Ticket #${ticketInfo.name}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-primary: #36393f;
-            --bg-secondary: #2f3136;
-            --text-normal: #dcddde;
-            --text-muted: #72767d;
-            --brand: #5865f2;
-        }
-        body {
-            background-color: var(--bg-primary);
-            color: var(--text-normal);
-            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            line-height: 1.5;
-        }
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            background: var(--bg-secondary);
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-            border-bottom: 1px solid var(--text-muted);
-            padding-bottom: 15px;
-            margin-bottom: 20px;
-        }
-        .message {
-            display: flex;
-            margin-bottom: 15px;
-            padding: 5px 10px;
-            border-radius: 4px;
-            transition: background 0.2s;
-        }
-        .message:hover {
-            background: rgba(79, 84, 92, 0.4);
-        }
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            margin-right: 15px;
-            object-fit: cover;
-        }
-        .message-content {
-            flex: 1;
-        }
-        .message-header {
-            display: flex;
-            align-items: baseline;
-            margin-bottom: 5px;
-        }
-        .username {
-            font-weight: 600;
-            color: white;
-            margin-right: 8px;
-        }
-        .timestamp {
-            font-size: 0.75em;
-            color: var(--text-muted);
-        }
-        .message-text {
-            word-break: break-word;
-        }
-        .attachments {
-            margin-top: 10px;
-        }
-        .attachment {
-            max-width: 300px;
-            border-radius: 4px;
-            margin-top: 5px;
-        }
-        .footer {
-            margin-top: 20px;
-            font-size: 0.8em;
-            color: var(--text-muted);
-            text-align: center;
-        }
-    </style>
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            // Verifica token nell'URL
-            const params = new URLSearchParams(window.location.search);
-            const token = params.get('token');
-            
-            if (!token) {
-                document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token mancante</p></div>';
-                return;
-            }
-            
-            // Verifica con il backend
-            fetch('/api/verify-token?token=' + token)
-                .then(response => {
-                    if (!response.ok) {
-                        document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token non valido</p></div>';
-                    }
-                });
-        });
-    </script>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Transcript Ticket #${ticketInfo.name}</h1>
-            <p><strong>Creato da:</strong> ${ticketInfo.opener}</p>
-            <p><strong>Aperto il:</strong> ${ticketInfo.createdAt.toLocaleString()}</p>
-            <p><strong>Chiuso il:</strong> ${ticketInfo.closedAt.toLocaleString()}</p>
-        </div>
-
-        <div class="messages">
-            ${messages.reverse().map(msg => `
-            <div class="message">
-                <img class="avatar" src="${msg.author.displayAvatarURL({ extension: 'png', size: 128 })}" alt="${msg.author.username}">
-                <div class="message-content">
-                    <div class="message-header">
-                        <span class="username">${msg.author.username}</span>
-                        <span class="timestamp">${msg.createdAt.toLocaleString()}</span>
-                    </div>
-                    <div class="message-text">${msg.content}</div>
-                    ${msg.attachments.size > 0 ? `
-                    <div class="attachments">
-                        ${Array.from(msg.attachments.values()).map(att => 
-                            `<img src="${att.url}" class="attachment" alt="Allegato">`
-                        ).join('')}
-                    </div>` : ''}
-                </div>
-            </div>
-            `).join('')}
-        </div>
-
-        <div class="footer">
-            <p>Transcript generato automaticamente • ${new Date().toLocaleString()}</p>
-        </div>
-    </div>
-</body>
-</html>`;
-
-        // 4. Salva il file
-        const transcriptPath = path.join(ticketsDir, `ticket_${channel.id}.html`);
-        fs.writeFileSync(transcriptPath, htmlContent);
-
-        return transcriptPath;
-
-    } catch (error) {
-        console.error('Errore generazione transcript:', error);
-        return null;
-    }
-}
-
-
-
-
-
-// Funzione per generare la trascrizione HTML di un ticket
-async function generateTranscript(channel) {
-    try {
-        // 1. Estrai openerId dal nome del canale o dal topic
-        const openerId = channel.topic || channel.name.replace('ticket-', '').split('_')[0];
-        
-        if (!openerId) {
-            throw new Error('Impossibile identificare il creatore del ticket');
-        }
-
-        // 2. Genera token e salva
-        const token = uuidv4();
-        const tokensPath = path.join(ticketsDir, 'tokens.json');
-        
-        let tokens = {};
-        if (fs.existsSync(tokensPath)) {
-            tokens = JSON.parse(fs.readFileSync(tokensPath));
-        }
-        tokens[channel.id] = {
-            token,
-            expiresAt: Date.now() + 600000, // 10 minuti
-            ownerId: openerId
-        };
-        fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
-
-        // 3. Recupera messaggi
-        const messages = await channel.messages.fetch({ limit: 100 }); // Puoi aumentare il limite se necessario
-
-        // Creazione della struttura HTML
-        let htmlContent = `
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trascrizione Ticket - ${channel.name}</title>
+    let htmlContent = `
+<!DOCTYPE html>Ticket - ${channel.name}</title>
     <style>
         body {
             background-color: #36393f;
@@ -498,183 +322,265 @@ async function generateTranscript(channel) {
             margin: 0;
             padding: 20px;
         }
-        .message {
-            display: flex;
-            margin-bottom: 15px;
-        }
-        .avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            margin-right: 15px;
-        }
-        .message-content {
-            flex: 1;
-        }
-        .username {
-            font-weight: bold;
+        h1 {
             color: #ffffff;
-            margin-right: 8px;
         }
-        .timestamp {
-            font-size: 0.8em;
-            color: #72767d;
+        ul {
+            list-style-type: none;
+            padding: 0;
         }
-        .content {
-            margin-top: 5px;
-            color: #dcddde;
+        li {
+            margin: 10px 0;
+        }
+        a {
+            text-decoration: none;
+            color: #00b0f4;
+        }
+        a:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
+    <script>
+        (function() {
+            const params = new URLSearchParams(window.location.search);
+            const ticketId = '${channel.id}';
+            
+            if(!params.has('token')) {
+                window.location.href = '/404';
+                return;
+            }
+
+            fetch('/.netlify/functions/verify-token?ticket=' + ticketId + '&token=' + params.get('token'))
+                .then(response => {
+                    if(!response.ok) window.location.href = '/401';
+                });
+        })();
+    </script>
+
 <body>
-    <h1>Trascrizione Ticket - ${channel.name}</h1>
-    <p><strong>ID Ticket:</strong> ${channel.id}</p>
-    <p><strong>Creato da:</strong> ${channel.topic || 'N/A'}</p>
-    <p><strong>Data di creazione:</strong> ${new Date(channel.createdAt).toLocaleString()}</p>
-    <p><strong>Data di chiusura:</strong> ${new Date().toLocaleString()}</p>
-    <hr>
-    <h2>Messaggi</h2>
+    <h1>Elenco Ticket</h1>
+    <ul>
 `;
 
-        // Aggiungi ogni messaggio all'HTML
-        messages.reverse().forEach(msg => {
-            htmlContent += `
-    <div class="message">
-        <img class="avatar" src="${msg.author.displayAvatarURL()}" alt="${msg.author.username}">
-        <div class="message-content">
-            <div>
-                <span class="username">${msg.author.username}</span>
-                <span class="timestamp">${new Date(msg.createdAt).toLocaleString()}</span>
-            </div>
-            <div class="content">${msg.content}</div>
-        </div>
-    </div>
-`;
-        });
-
+    ticketFiles.forEach(file => {
+        const ticketName = file.replace('.html', '');
         htmlContent += `
+        <li><a href="${file}">${ticketName}</a></li>
+`;
+    });
+
+    htmlContent += `
+    </ul>
 </body>
 </html>
 `;
 
-        // Salva il file HTML
-        const transcriptPath = path.join(ticketsDir, `ticket_${channel.id}.html`);
-        fs.writeFileSync(transcriptPath, htmlContent);
-
-        // 6. Invia token via DM
-        try {
-            const opener = await client.users.fetch(openerId);
-            await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${token}\`\nScade tra 10 minuti.`);
-        } catch (dmError) {
-            console.error(`Impossibile inviare DM a ${openerId}:`, dmError);
-        }
-
-        return transcriptPath;
-
-    } catch (error) {
-        console.error('Errore generazione transcript:', error);
-        return null;
-    }
+fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
+} catch (error) {
+    console.error('Errore durante la generazione della trascrizione:', error);
+    return null;
 }
+}
+
+
+// Funzione per generare la trascrizione HTML di un ticket
+async function generateTranscript(channel, openerId) {
+    // Genera token utente
+    const { token, expiresAt } = generateUserToken(channel.id);
+  
+    // Invia token via DM
+    const opener = await client.users.fetch(openerId);
+    await opener.send({
+      content: `🔐 **Token di Accesso Ticket**\n` +
+               `Usa questo codice per accedere al ticket:\n` +
+               `\`${token}\`\n` +
+               `⚠️ Valido per 1 ora | NON condividerlo!`
+    });
+  
+    // Genera HTML con doppia autenticazione
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        .staff-auth { display: none; }
+        .staff-link { color: #f04747; cursor: pointer; }
+      </style>
+    </head>
+    <body>
+      <div id="user-auth">
+        <input type="text" id="user-token" placeholder="Il tuo token">
+        <button onclick="verifyUserToken()">Accedi</button>
+      </div>
+      
+      <p class="staff-link" onclick="showStaffAuth()">Sei staff? Clicca qui</p>
+      
+      <div id="staff-auth" class="staff-auth">
+        <input type="password" id="staff-token" placeholder="Token staff">
+        <button onclick="verifyStaffToken()">Verifica Staff</button>
+      </div>
+  
+      <script>
+        const ticketId = "${channel.id}";
+        
+        function verifyUserToken() {
+          const token = document.getElementById('user-token').value;
+          fetch('/verify-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticketId, token })
+          }).then(res => res.json())
+            .then(data => {
+              if (data.valid) showContent();
+              else alert('Token utente non valido!');
+            });
+        }
+        
+        function verifyStaffToken() {
+          const token = document.getElementById('staff-token').value;
+          fetch('/verify-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ticketId, token, isStaff: true })
+          }).then(res => res.json())
+            .then(data => {
+              if (data.valid && data.isStaff) showContent(true);
+              else alert('Token staff non valido!');
+            });
+        }
+        
+        function showStaffAuth() {
+          document.getElementById('staff-auth').style.display = 'block';
+        }
+        
+        function showContent(isStaff = false) {
+          // Carica contenuto protetto...
+          document.body.innerHTML = \`
+            <h1>Ticket \${ticketId}</h1>
+            \${isStaff ? '<p class="staff-badge">👮 Modalità Staff</p>' : ''}
+            <!-- Contenuto del ticket -->
+          \`;
+        }
+      </script>
+    </body>
+    </html>
+    `;
+  
+    fs.writeFileSync(`tickets/${channel.id}.html`, htmlContent);
+  }
 
 // Gestione degli eventi dei bottoni
 client.on('interactionCreate', async interaction => {
     try {
-            if (!interaction.isButton()) return;
-    
-            const { customId, guild, member, channel } = interaction;
-    
-            if (customId === 'apri_ticket') {
-                // Verifica se l'utente ha già un ticket aperto
-                const existingTicket = guild.channels.cache.find(ch => ch.name === `ticket-${member.user.id}`);
-                if (existingTicket) {
-                    return interaction.reply({ content: 'Hai già un ticket aperto!', flags: 'Ephemeral' });
-                }
-    
-                // Creazione del canale ticket
-                const ticketChannel = await guild.channels.create({
-                    name: `ticket-${member.user.id}`, // Nome del canale
-                    type: ChannelType.GuildText, // Tipo di canale (testo)
-                    permissionOverwrites: [
-                        {
-                            id: guild.id, // Imposta i permessi per il server
-                            deny: [PermissionsBitField.Flags.ViewChannel], // Nega la vista a tutti
-                        },
-                        {
-                            id: member.user.id, // Imposta i permessi per l'utente
-                            allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages], // Permetti la vista e l'invio di messaggi
-                        },
-                    ],
+        if (!interaction.isButton()) return;
+
+        const { customId, guild, member, channel } = interaction;
+
+        if (customId === 'apri_ticket') {
+            // Verifica se l'utente ha già un ticket aperto
+            const existingTicket = guild.channels.cache.find(ch => ch.name === `ticket-${member.user.id}`);
+            if (existingTicket) {
+                return interaction.reply({ content: 'Hai già un ticket aperto!', flags: 'Ephemeral' });
+            }
+
+            // Creazione del canale ticket
+            const ticketChannel = await guild.channels.create({
+                name: `ticket-${member.user.id}`, // Nome del canale
+                type: ChannelType.GuildText, // Tipo di canale (testo)
+                permissionOverwrites: [
+                    {
+                        id: guild.id, // Imposta i permessi per il server
+                        deny: [PermissionsBitField.Flags.ViewChannel], // Nega la vista a tutti
+                    },
+                    {
+                        id: member.user.id, // Imposta i permessi per l'utente
+                        allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages], // Permetti la vista e l'invio di messaggi
+                    },
+                ],
+            });
+
+            // Embed per il ticket creato
+            const ticketEmbed = new EmbedBuilder()
+                .setColor('#00ff00')
+                .setTitle('Ticket Aperto')
+                .setDescription(`Ciao ${member.user.username}, il tuo ticket è stato aperto!`)
+                .addFields(
+                    { name: 'Utente', value: `${member.user}`, inline: true },
+                    { name: 'ID Ticket', value: `${ticketChannel.id}`, inline: true }
+                )
+                .setFooter({ text: 'Il nostro team ti risponderà al più presto!' })
+                .setTimestamp();
+
+            // Pulsanti per il ticket (Claim e Close)
+            const ticketButtons = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('claim_ticket')
+                        .setLabel('Claim')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId('close_ticket')
+                        .setLabel('Close')
+                        .setStyle(ButtonStyle.Danger)
+                );
+
+            // Invio dell'embed e dei pulsanti nel canale del ticket
+            ticketChannel.send({ embeds: [ticketEmbed], components: [ticketButtons] });
+
+            // Risposta all'utente
+            interaction.reply({ content: `Il tuo ticket è stato creato: ${ticketChannel}`, flags: 'Ephemeral' });
+        }
+
+        if (customId === 'claim_ticket') {
+            if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+                return interaction.reply({ content: 'Non hai il permesso di gestire i ticket.', flags: 'Ephemeral' });
+            }
+
+            await channel.permissionOverwrites.edit(member.id, { ViewChannel: true, SendMessages: true });
+
+            // Invia un messaggio pubblico nel canale del ticket
+            channel.send(`Il ticket è stato reclamato da ${member.user.username}.`);
+        }
+
+        if (customId === 'close_ticket') {
+            const openerId = channel.name.replace('ticket-', '');      
+            const transcriptPath = await generateTranscript(channel, openerId);
+            if (!member.permissions.has(PermissionsBitField.Flags.ManageMessages)) {
+                return interaction.reply({ content: 'Non hai il permesso di chiudere i ticket.', flags: 'Ephemeral' });
+            }
+
+            if (!openerId || !/^\d+$/.test(openerId)) {
+                return interaction.reply({ 
+                    content: 'Errore: impossibile identificare il creatore del ticket', 
+                    ephemeral: true 
                 });
-    
-                // Embed per il ticket creato
-                const ticketEmbed = new EmbedBuilder()
-                    .setColor('#00ff00')
-                    .setTitle('Ticket Aperto')
-                    .setDescription(`Ciao ${member.user.username}, il tuo ticket è stato aperto!`)
-                    .addFields(
-                        { name: 'Utente', value: `${member.user}`, inline: true },
-                        { name: 'ID Ticket', value: `${ticketChannel.id}`, inline: true }
-                    )
-                    .setFooter({ text: 'Il nostro team ti risponderà al più presto!' })
-                    .setTimestamp();
-    
-                // Pulsanti per il ticket (Claim e Close)
-                const ticketButtons = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId('claim_ticket')
-                            .setLabel('Claim')
-                            .setStyle(ButtonStyle.Primary),
-                        new ButtonBuilder()
-                            .setCustomId('close_ticket')
-                            .setLabel('Close')
-                            .setStyle(ButtonStyle.Danger)
-                    );
-    
-                // Invio dell'embed e dei pulsanti nel canale del ticket
-                ticketChannel.send({ embeds: [ticketEmbed], components: [ticketButtons] });
-    
-                // Risposta all'utente
-                interaction.reply({ content: `Il tuo ticket è stato creato: ${ticketChannel}`, flags: 'Ephemeral' });
             }
-    
-            if (interaction.customId === 'close_ticket') {
-                try {
-                    const channel = interaction.channel;
-                    
-                    // Genera transcript
-                    const transcriptPath = await generateTranscript(channel);
-                    
-                    if (!transcriptPath) {
-                        throw new Error('Generazione transcript fallita');
-                    }
-            
-                    // Notifica
-                    await interaction.reply({ 
-                        content: '✅ Ticket chiuso con successo!', 
-                        ephemeral: true 
-                    });
-                    
-                    // Elimina canale dopo breve ritardo
-                    setTimeout(() => {
-                        channel.delete().catch(err => {
-                            console.error('Errore eliminazione canale:', err);
-                        });
-                    }, 2000);
-            
-                } catch (error) {
-                    console.error('Errore chiusura ticket:', error);
-                    await interaction.reply({ 
-                        content: '❌ Errore durante la chiusura del ticket', 
-                        ephemeral: true 
-                    });
-                }
+
+            // Verifica che il canale esista
+            if (!channel || channel.deleted) {
+                return interaction.reply({ content: 'Il canale del ticket non esiste più.', flags: 'Ephemeral' });
             }
-    }catch(error){
-    console.error("Errore generico",error);
+
+            // Genera la trascrizione PRIMA di eliminare il canale
+
+            // Elimina il canale del ticket DOPO aver generato la trascrizione
+            await channel.delete();
+
+            // Notifica l'utente
+            try {
+                await member.send('Il tuo ticket è stato chiuso. Grazie per aver contattato il supporto!');
+            } catch (error) {
+                console.error('Impossibile inviare un messaggio privato all\'utente:', error);
+            }
+        }
+    } catch (error) {
+        console.error('Errore durante la gestione dell\'interazione:', error);
+        interaction.reply({ content: 'Si è verificato un errore durante l\'esecuzione del comando.', flags: 'Ephemeral' });
     }
 });
+
+
 
 
 // Funzione per gestire il comando 
@@ -833,7 +739,7 @@ async function banCommand(message, args) {
         const member = message.guild.members.cache.get(user.id);
         if (!member) {
             console.log('[LOG] Utente menzionato non trovato nel server.'); // Log in console
-            return message.reply('Questo utente non è più nel server.');
+            return message.reply('QueupdateTicketsListsto utente non è più nel server.');
         }
 
         await member.ban({ reason });
@@ -989,51 +895,14 @@ function runGitCommand(command) {
     });
 }
 
-function runGitCommand(command, cwd = __dirname) {
-    return new Promise((resolve, reject) => {
-        exec(command, { cwd }, (error, stdout, stderr) => {
-            if (error) {
-                console.error(`Errore durante l'esecuzione del comando: ${command}`);
-                console.error(stderr);
-                reject(error);
-            } else {
-                console.log(stdout);
-                resolve(stdout);
-            }
-        });
-    });
-}
-
+// Funzione per pushare i file al repository GitHub
 async function pushToGitHub() {
     try {
-        // Prima verifichiamo il branch corrente
-        const currentBranch = await runGitCommand('git branch --show-current');
-        const branchName = currentBranch.trim() || 'master'; // Default a 'master' se non rilevato
-        
-        console.log(`Eseguendo push sul branch: ${branchName}`);
-
-        // Configura Git
-        await runGitCommand('git config --global user.name "Bot"');
-        await runGitCommand('git config --global user.email "bot@example.com"');
-
-        // Aggiungi tutti i file nella cartella tickets
-        await runGitCommand('git add tickets');
-
-        // Fai commit delle modifiche
-        await runGitCommand('git commit -m "Aggiunti nuovi ticket automaticamente"');
-
-        // Push al repository GitHub
-        await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git ${branchName}`);
-
-        console.log('Push completato con successo!');
+        await runGitCommand(`cd "${TICKETS_DIR}" && git add .`);
+        await runGitCommand(`cd "${TICKETS_DIR}" && git commit -m "Aggiunti nuovi ticket automaticamente"`);
+        await runGitCommand(`cd "${TICKETS_DIR}" && git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git master`);
     } catch (error) {
         console.error('Errore durante il push al repository GitHub:', error);
-        
-        // Prova con 'master' se 'main' fallisce
-        if (error.message.includes('main does not match any')) {
-            console.log('Tentativo con branch master...');
-            await runGitCommand(`git push https://${GITHUB_TOKEN}@github.com/${GITHUB_REPO}.git master`);
-        }
     }
 }
 
@@ -1286,31 +1155,45 @@ ${progressBar} (${Math.round((userData.xp / xpNeeded) * 100)}%)
     `);
 });
 
-function generateTempToken() {
-    return {
-      token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
-      expiresAt: Date.now() + 600000 // Scade in 10 minuti
-    };
+const SECURITY = {
+    STAFF_TOKEN: process.env.STAFF_TOKEN || crypto.randomBytes(32).toString('hex'), // Token permanente staff
+    USER_TOKEN_EXPIRE: 3600000, // 1 ora in ms
+    TOKEN_SECRET: process.env.TOKEN_SECRET || crypto.randomBytes(64).toString('hex')
+  };
+  
+  // Database semplificato dei token
+  const tokenDB = {
+    staff: SECURITY.STAFF_TOKEN,
+    users: {} // { ticketId: { token, expiresAt } }
+  };
+
+function generateUserToken(ticketId) {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = Date.now() + SECURITY.USER_TOKEN_EXPIRE;
+    
+    tokenDB.users[ticketId] = { token, expiresAt };
+    fs.writeFileSync('tokens.json', JSON.stringify(tokenDB));
+    
+    return { token, expiresAt };
   }
   
-  // Token permanente per lo staff (salvato in .env)
-  const STAFF_TOKEN = process.env.STAFF_TOKEN || "staff-segreto-123";
-  
-  // Verifica i token
-  function verifyToken(userToken, staffToken, ticketOwnerId, userId) {
-    // Se è lo staff con token permanente
-    if (staffToken === STAFF_TOKEN) return true;
-    
-    // Se è il creatore del ticket con token temporaneo
-    if (userId === ticketOwnerId && userToken === currentTempToken?.token && Date.now() < currentTempToken.expiresAt) {
-      return true;
+  // Middleware di verifica
+  function verifyToken(ticketId, userToken, isStaffToken = false) {
+    if (isStaffToken && userToken === SECURITY.STAFF_TOKEN) {
+      return { valid: true, isStaff: true };
     }
-    
-    return false;
-  }
   
-  // Salva i token temporanei (in memoria per semplicità)
-  const tempTokens = new Map(); // Formato: { ticketId: { token, expiresAt, ownerId } }
+    const userTokenData = tokenDB.users[ticketId];
+    if (userTokenData && userTokenData.token === userToken) {
+      return { 
+        valid: userTokenData.expiresAt > Date.now(),
+        isStaff: false
+      };
+    }
+  
+    return { valid: false };
+  }
+
 
 
 client.login(process.env.DISCORD_TOKEN); // Usa il token da .env

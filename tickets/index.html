@@ -16,6 +16,7 @@
         }
         .auth-option:hover { background: #40444b; }
         .hidden { display: none; }
+        .error-message { color: #f04747; display: none; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -41,7 +42,7 @@
             <button onclick="verifyToken('staff')">Verifica</button>
         </div>
 
-        <div id="error-message" style="color: #f04747; display: none;"></div>
+        <div id="error-message" class="error-message"></div>
     </div>
 
     <div id="content" class="hidden">
@@ -73,38 +74,53 @@
                 return;
             }
 
-            // Simulazione verifica (sostituisci con chiamata API reale)
-            let isValid = false;
-            let isStaff = false;
+            // Recupera l'ID del ticket dall'URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const ticketId = urlParams.get('ticket');
 
-            if (type === 'staff') {
-                // Verifica token staff (esempio)
-                isValid = token === 'STAFF_SECRET_TOKEN'; // Sostituisci con la tua logica
-                isStaff = true;
-            } else {
-                // Verifica token utente (esempio)
-                isValid = token.length === 32; // Sostituisci con la tua logica
+            if (!ticketId) {
+                showError('Ticket non valido');
+                return;
             }
 
-            if (isValid) {
-                // Accesso consentito
-                document.getElementById('auth-container').classList.add('hidden');
-                document.getElementById('content').classList.remove('hidden');
-                
-                if (isStaff) {
-                    document.getElementById('content').innerHTML = `
-                        <h1>Modalità Staff</h1>
-                        <p>Accesso completo a tutti i ticket</p>
-                    `;
+            // Invia la richiesta di verifica al server
+            fetch('/verify-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    ticketId: ticketId,
+                    token: token,
+                    isStaff: type === 'staff'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.valid) {
+                    // Accesso consentito
+                    document.getElementById('auth-container').classList.add('hidden');
+                    document.getElementById('content').classList.remove('hidden');
+                    
+                    if (data.isStaff) {
+                        document.getElementById('content').innerHTML = `
+                            <h1>Modalità Staff</h1>
+                            <p>Accesso completo a tutti i ticket</p>
+                        `;
+                    } else {
+                        document.getElementById('content').innerHTML = `
+                            <h1>Il Tuo Ticket</h1>
+                            <p>Contenuto del ticket...</p>
+                        `;
+                    }
                 } else {
-                    document.getElementById('content').innerHTML = `
-                        <h1>Il Tuo Ticket</h1>
-                        <p>Contenuto del ticket...</p>
-                    `;
+                    showError('Token non valido');
                 }
-            } else {
-                showError('Token non valido');
-            }
+            })
+            .catch(error => {
+                console.error('Errore durante la verifica del token:', error);
+                showError('Errore durante la verifica del token');
+            });
         }
 
         function showError(message) {
