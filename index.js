@@ -14,14 +14,16 @@ const crypto = require('crypto');
 
 app.post('/verify-token', (req, res) => {
     const { ticketId, token, isStaff } = req.body;
+    console.log('Dati ricevuti dal frontend:', { ticketId, token, isStaff });
+
     const verification = verifyToken(ticketId, token, isStaff);
+    console.log('Risultato verifica:', verification);
     
     res.json({
         valid: verification.valid,
         isStaff: verification.isStaff
     });
 });
-  
   app.listen(3000, () => console.log('Auth server running on port 3000'));
 
 const client = new Client({
@@ -1168,30 +1170,24 @@ const SECURITY = {
     users: {} // { ticketId: { token, expiresAt } }
   };
 
-function generateUserToken(ticketId) {
-    const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = Date.now() + SECURITY.USER_TOKEN_EXPIRE;
-    
-    tokenDB.users[ticketId] = { token, expiresAt };
-    fs.writeFileSync('tokens.json', JSON.stringify(tokenDB));
-    
-    return { token, expiresAt };
-  }
-  
-  // Middleware di verifica
   function verifyToken(ticketId, userToken, isStaffToken = false) {
+    console.log('Dati ricevuti:', { ticketId, userToken, isStaffToken });
+
     if (isStaffToken && userToken === SECURITY.STAFF_TOKEN) {
+        console.log('Token staff valido');
         return { valid: true, isStaff: true };
     }
 
     const userTokenData = tokenDB.users[ticketId];
     if (userTokenData && userTokenData.token === userToken) {
+        console.log('Token utente valido:', userTokenData.expiresAt > Date.now() ? 'Non scaduto' : 'Scaduto');
         return { 
             valid: userTokenData.expiresAt > Date.now(),
             isStaff: false
         };
     }
 
+    console.log('Token non valido');
     return { valid: false };
 }
 

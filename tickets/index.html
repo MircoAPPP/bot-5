@@ -83,6 +83,14 @@
         return;
     }
 
+    console.log('Dati inviati al backend:', {
+        ticketId: ticketId,
+        token: token,
+        isStaff: type === 'staff'
+    });
+    console.log('Token generato:', token);
+
+
     // Invia la richiesta di verifica al server
     fetch('/verify-token', {
         method: 'POST',
@@ -97,6 +105,7 @@
     })
     .then(response => response.json())
     .then(data => {
+        console.log('Risposta dal backend:', data);
         if (data.valid) {
             // Accesso consentito
             document.getElementById('auth-container').classList.add('hidden');
@@ -122,7 +131,6 @@
         showError('Errore durante la verifica del token');
     });
 }
-
         function showError(message) {
             const errorElement = document.getElementById('error-message');
             errorElement.textContent = message;
