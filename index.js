@@ -17,10 +17,10 @@ app.post('/verify-token', (req, res) => {
     const verification = verifyToken(ticketId, token, isStaff);
     
     res.json({
-      valid: verification.valid,
-      isStaff: verification.isStaff
+        valid: verification.valid,
+        isStaff: verification.isStaff
     });
-  });
+});
   
   app.listen(3000, () => console.log('Auth server running on port 3000'));
 
@@ -45,6 +45,7 @@ const GITHUB_REPO = process.env.GITHUB_REPO;
 
 client.once('ready', () => {
     console.log(`Bot avviato come ${client.user.tag}`);
+    console.log('Token staff configurato:', SECURITY.STAFF_TOKEN);
 });
 
 // Funzione per ottenere una GIF da Giphy
@@ -1180,19 +1181,19 @@ function generateUserToken(ticketId) {
   // Middleware di verifica
   function verifyToken(ticketId, userToken, isStaffToken = false) {
     if (isStaffToken && userToken === SECURITY.STAFF_TOKEN) {
-      return { valid: true, isStaff: true };
+        return { valid: true, isStaff: true };
     }
-  
+
     const userTokenData = tokenDB.users[ticketId];
     if (userTokenData && userTokenData.token === userToken) {
-      return { 
-        valid: userTokenData.expiresAt > Date.now(),
-        isStaff: false
-      };
+        return { 
+            valid: userTokenData.expiresAt > Date.now(),
+            isStaff: false
+        };
     }
-  
+
     return { valid: false };
-  }
+}
 
 
 
