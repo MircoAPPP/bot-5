@@ -59,6 +59,7 @@ async function getKirbyGif(action) {
 }
 
 
+
 async function getFurryGif(action) {
     try {
         const url = `https://api.giphy.com/v1/gifs/search?api_key=${process.env.GIPHY_API_KEY}&q=furry-fandom ${action}&limit=10`;
@@ -248,6 +249,22 @@ const roleplayCommands = {
     },
 };
 
+
+
+
+function verifyToken(userToken, staffToken, ticketId, userId) {
+    // Se è lo staff con token permanente
+    if (staffToken === STAFF_TOKEN) return true;
+    
+    // Se è il creatore del ticket con token temporaneo
+    const tempToken = tempTokens.get(ticketId);
+    if (userId === tempToken?.ownerId && userToken === tempToken?.token && Date.now() < tempToken.expiresAt) {
+        return true;
+    }
+    
+    return false;
+}
+
 client.on('guildMemberAdd', member => {
     const welcomeChannel = member.guild.channels.cache.find(channel => channel.name === 'benvenuto');
     if (!welcomeChannel) return;
@@ -279,6 +296,171 @@ function updateIndexHTML() {
 
     htmlContent += `</ul></body></html>`;
     fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
+}
+
+function generateHTMLTemplate(ticketInfo, messages) {
+    return `
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transcript Ticket #${ticketInfo.name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+:root {
+            --bg-primary: #36393f;
+            --bg-secondary: #2f3136;
+            --text-normal: #dcddde;
+            --text-muted: #72767d;
+            --brand: #5865f2;
+        }
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-normal);
+            font-family: 'Whitney', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            border-bottom: 1px solid var(--text-muted);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+        .message {
+            display: flex;
+            margin-bottom: 15px;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .message:hover {
+            background: rgba(79, 84, 92, 0.4);
+        }
+        .avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 15px;
+            object-fit: cover;
+        }
+        .message-content {
+            flex: 1;
+        }
+        .message-header {
+            display: flex;
+            align-items: baseline;
+            margin-bottom: 5px;
+        }
+        .username {
+            font-weight: 600;
+            color: white;
+            margin-right: 8px;
+        }
+        .timestamp {
+            font-size: 0.75em;
+            color: var(--text-muted);
+        }
+        .message-text {
+            word-break: break-word;
+        }
+        .attachments {
+            margin-top: 10px;
+        }
+        .attachment {
+            max-width: 300px;
+            border-radius: 4px;
+            margin-top: 5px;
+        }
+        .footer {
+            margin-top: 20px;
+            font-size: 0.8em;
+            color: var(--text-muted);
+                text-align: center;
+            }
+        </style>
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const ticketId = '${ticketInfo.id}';
+            const userToken = params.get('token');
+            const staffToken = params.get('staffToken');
+
+            if (!userToken && !staffToken) {
+                document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token mancante</p></div>';
+                return;
+            }
+
+            fetch('/.netlify/functions/verify-token', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    userToken,
+                    staffToken,
+                    ticketId,
+                    userId: '${ticketInfo.openerId}'
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    document.body.innerHTML = '<div class="container"><h1>Accesso negato</h1><p>Token non valido o scaduto</p></div>';
+                }
+            })
+            .catch(() => {
+                document.body.innerHTML = '<div class="container"><h1>Errore</h1><p>Impossibile verificare il token</p></div>';
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Transcript Ticket #${ticketInfo.name}</h1>
+            <p><strong>Creato da:</strong> ${ticketInfo.opener}</p>
+            <p><strong>Aperto il:</strong> ${ticketInfo.createdAt.toLocaleString()}</p>
+            <p><strong>Chiuso il:</strong> ${ticketInfo.closedAt.toLocaleString()}</p>
+        </div>
+
+        <div class="messages">
+            ${messages.reverse().map(msg => `
+            <div class="message">
+                <img class="avatar" src="${msg.author.displayAvatarURL({ extension: 'png', size: 128 })}" alt="${msg.author.username}">
+                <div class="message-content">
+                    <div class="message-header">
+                        <span class="username">${msg.author.username}</span>
+                        <span class="timestamp">${msg.createdAt.toLocaleString()}</span>
+                    </div>
+                    <div class="message-text">${msg.content}</div>
+                    ${msg.attachments.size > 0 ? `
+                    <div class="attachments">
+                        ${Array.from(msg.attachments.values()).map(att => 
+                            `<img src="${att.url}" class="attachment" alt="Allegato">`
+                        ).join('')}
+                    </div>` : ''}
+                </div>
+            </div>
+            `).join('')}
+        </div>
+
+        <div class="footer">
+            <p>Transcript generato automaticamente • ${new Date().toLocaleString()}</p>
+        </div>
+    </div>
+</body>
+</html>
+`;
 }
 
 // Funzione per aggiornare index.html
@@ -376,26 +558,15 @@ fs.writeFileSync(path.join(ticketsDir, 'index.html'), htmlContent);
 // Funzione per generare la trascrizione HTML di un ticket
 async function generateTranscript(channel, openerId) {
     try {
-        // 1. Genera e salva il token temporaneo
-        const tempToken = {
-            token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
-            expiresAt: Date.now() + 600000 // Scade in 10 minuti
-        };
-        
-        // Salva il token (in memoria o su file)
-        const tokensPath = path.join(ticketsDir, 'tokens.json');
-        let tokens = {};
-        if (fs.existsSync(tokensPath)) {
-            tokens = JSON.parse(fs.readFileSync(tokensPath));
-        }
-        tokens[channel.id] = {
+        // Genera e salva il token temporaneo
+        const tempToken = generateTempToken();
+        tempTokens.set(channel.id, {
             token: tempToken.token,
             expiresAt: tempToken.expiresAt,
             ownerId: openerId
-        };
-        fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+        });
 
-        // 2. Invia il token all'utente via DM
+        // Invia il token all'utente via DM
         try {
             const opener = await client.users.fetch(openerId);
             await opener.send(`🔐 Token per accedere al ticket #${channel.name}: \`${tempToken.token}\`\nScade tra 10 minuti.`);
@@ -403,73 +574,24 @@ async function generateTranscript(channel, openerId) {
             console.error('Impossibile inviare il token via DM:', dmError);
         }
 
-        // 3. Raccogli i messaggi del canale
+        // Genera il contenuto HTML
+        const ticketInfo = {
+            id: channel.id,
+            name: channel.name,
+            opener: channel.topic || 'N/A',
+            openerId: openerId,
+            createdAt: channel.createdAt,
+            closedAt: new Date()
+        };
+
         const messages = await channel.messages.fetch({ limit: 100 });
-        
-        // 4. Crea la struttura HTML
-        let htmlContent = `
-<!DOCTYPE html>
-<html lang="it">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trascrizione Ticket - ${channel.name}</title>
-    <style>
-        body { background-color: #36393f; color: #fff; font-family: 'Whitney', sans-serif; margin: 0; padding: 20px; }
-        .message { display: flex; margin-bottom: 15px; }
-        .avatar { width: 40px; height: 40px; border-radius: 50%; margin-right: 15px; }
-        .message-content { flex: 1; }
-        .username { font-weight: bold; color: #fff; margin-right: 8px; }
-        .timestamp { font-size: 0.8em; color: #72767d; }
-        .content { margin-top: 5px; color: #dcddde; }
-        .attachments img { max-width: 300px; max-height: 300px; border-radius: 4px; }
-    </style>
-</head>
-<body>
-    <h1>Trascrizione Ticket - ${channel.name}</h1>
-    <p><strong>ID Ticket:</strong> ${channel.id}</p>
-    <p><strong>Creato da:</strong> ${channel.topic || 'N/A'}</p>
-    <p><strong>Data creazione:</strong> ${new Date(channel.createdAt).toLocaleString()}</p>
-    <p><strong>Data chiusura:</strong> ${new Date().toLocaleString()}</p>
-    <hr>
-    <h2>Messaggi (${messages.size})</h2>
-`;
+        const htmlContent = generateHTMLTemplate(ticketInfo, messages);
 
-        // 5. Aggiungi i messaggi all'HTML
-        messages.reverse().forEach(msg => {
-            let attachmentsContent = '';
-            if (msg.attachments.size > 0) {
-                attachmentsContent = `<div class="attachments">` +
-                    Array.from(msg.attachments.values())
-                        .map(att => att.contentType?.startsWith('image/') 
-                            ? `<img src="${att.url}" alt="Allegato">` 
-                            : `<a href="${att.url}">${att.name}</a>`)
-                        .join('<br>') +
-                    `</div>`;
-            }
-
-            htmlContent += `
-    <div class="message">
-        <img class="avatar" src="${msg.author.displayAvatarURL()}" alt="${msg.author.username}">
-        <div class="message-content">
-            <div>
-                <span class="username">${msg.author.username}</span>
-                <span class="timestamp">${new Date(msg.createdAt).toLocaleString()}</span>
-            </div>
-            <div class="content">${msg.content}</div>
-            ${attachmentsContent}
-        </div>
-    </div>
-`;
-        });
-
-        htmlContent += `</body></html>`;
-
-        // 6. Salva il file HTML
+        // Salva il file HTML
         const transcriptPath = path.join(ticketsDir, `${channel.name}_${channel.id}.html`);
         fs.writeFileSync(transcriptPath, htmlContent);
 
-        // 7. Aggiorna l'indice dei ticket
+        // Aggiorna l'indice dei ticket
         updateIndexHTML();
 
         return transcriptPath;
@@ -478,7 +600,6 @@ async function generateTranscript(channel, openerId) {
         return null;
     }
 }
-
 // Gestione degli eventi dei bottoni
 client.on('interactionCreate', async interaction => {
     try {
@@ -957,7 +1078,7 @@ client.on('messageCreate', async (message) => {
 });
 
 // Automod aggiornato
-const badWords = ['raid', 'pornhub', 'spam', "porno", "negro"];
+const badWords = ["raid"];
 const allowedDomains = /^(https?:\/\/)?(www\.)?(youtube|twitch|twitter|instagram|facebook|reddit)\.(com|tv|it)/i;
 
 client.on('messageCreate', async (message) => {
@@ -1164,29 +1285,16 @@ ${progressBar} (${Math.round((userData.xp / xpNeeded) * 100)}%)
 
 function generateTempToken() {
     return {
-      token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
-      expiresAt: Date.now() + 600000 // Scade in 10 minuti
+        token: Math.floor(100000 + Math.random() * 900000).toString(), // Codice a 6 cifre
+        expiresAt: Date.now() + 600000 // Scade in 10 minuti
     };
-  }
-  
-  // Token permanente per lo staff (salvato in .env)
-  const STAFF_TOKEN = process.env.STAFF_TOKEN || "staff-segreto-123";
-  
-  // Verifica i token
-  function verifyToken(userToken, staffToken, ticketOwnerId, userId) {
-    // Se è lo staff con token permanente
-    if (staffToken === STAFF_TOKEN) return true;
-    
-    // Se è il creatore del ticket con token temporaneo
-    if (userId === ticketOwnerId && userToken === currentTempToken?.token && Date.now() < currentTempToken.expiresAt) {
-      return true;
-    }
-    
-    return false;
-  }
-  
-  // Salva i token temporanei (in memoria per semplicità)
-  const tempTokens = new Map(); // Formato: { ticketId: { token, expiresAt, ownerId } }
+}
+
+// Token permanente per lo staff (salvato in .env)
+const STAFF_TOKEN = process.env.STAFF_TOKEN || "staff-secreta-123";
+
+// Salva i token temporanei (in memoria per semplicità)
+const tempTokens = new Map(); // Formato: { ticketId: { token, expiresAt, ownerId } }
 
 
 client.login(process.env.DISCORD_TOKEN); // Usa il token da .env
